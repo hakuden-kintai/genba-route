@@ -100,7 +100,7 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
     <div class="row" style="margin-top:10px">
       <div class="choices"><span class="wl">今日の仕事</span>
         <label><input type="radio" name="job" id="job_d" value="d" checked> 配送（30〜60分）</label>
-        <label><input type="radio" name="job" id="job_a" value="a"> エアコン（1〜2時間）</label>
+        <label><input type="radio" name="job" id="job_a" value="a"> エアコン（60〜90分）</label>
       </div>
       <label class="field">出発時刻 <input id="depart" type="time" value="08:00"></label>
     </div>
@@ -126,7 +126,7 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
     <h2>回る順番</h2>
     <div id="total" class="total"></div>
     <div id="manual" class="manual" hidden><span id="manualMsg"></span> <button id="reset">最短の順番に戻す</button></div>
-    <p class="hint" style="margin:0 0 8px">▲▼で順番を入れ替えられます。時間は入れ替えた順番で計算し直します。移動時間と作業時間は10分単位に繰り上げて計算しています。到着時刻は、作業が早く終わる現場と長引く現場が混ざる前提での目安です。順番は、作業時間の真ん中（配送45分・エアコン90分）で決めています。</p>
+    <p class="hint" style="margin:0 0 8px">▲▼で順番を入れ替えられます。時間は入れ替えた順番で計算し直します。移動時間と作業時間は10分単位に繰り上げて計算しています。到着時刻は、作業が早く終わる現場と長引く現場が混ざる前提での目安です。順番は、作業時間の真ん中（配送45分・エアコン75分）で決めています。</p>
     <div id="map" hidden></div>
     <ol id="result" class="result"></ol>
     <div id="links" class="links"></div>
@@ -356,7 +356,7 @@ let lastRoad = false;
 let cur = null;
 const render = scroll => show(cur.start, cur.dest, cur.order, cur.list, cur.dur, cur.dist, cur.pts, cur.end, scroll);
 // 作業時間（分）：早ければ〜遅ければ
-const WORK = {d: [30, 60], a: [60, 120]};
+const WORK = {d: [30, 60], a: [60, 90]};
 
 // お客様に伝える時間の幅。全部早く終わったときの到着〜全部遅く終わったときの到着を、ちょうどの「時」に広げる
 // 2時間より狭いときは2時間にする。時間指定はその時間をそのまま
