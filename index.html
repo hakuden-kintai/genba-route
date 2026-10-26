@@ -324,11 +324,17 @@ function expandAddr(addr, ref){
       hits.push(c); break;
     }
   }
-  if (!hits.length) return {full: addr, note: ""};
-  const far = c => ref ? (c.towns[Object.keys(c.towns)[0]] && Math.hypot(c.center[0] - ref.lat, c.center[1] - ref.lng)) : (c.pref === "岡山県" ? 0 : 1);
+  // 町名がデータにない → 住所検索に任せる。岡山県外になったら resolve で注意を出す
+  if (!hits.length) return {full: addr, note: "", guessed: true};
+  // 岡山県内を優先。その中では出発地に近い方
+  const far = c => (c.pref === "岡山県" ? 0 : 1000) + (ref ? Math.hypot(c.center[0] - ref.lat, c.center[1] - ref.lng) : 0);
   hits.sort((a, b) => far(a) - far(b));
-  const others = [...new Set(hits.slice(1).map(c => c.city))];
-  return {full: hits[0].city + addr, note: others.length ? "同じ町名が" + others.slice(0, 2).join("・") + (others.length > 2 ? "など" : "") + "にもあります" : ""};
+  const c = hits[0], others = [...new Set(hits.slice(1).map(o => o.city))];
+  const out = c.pref !== "岡山県";
+  const notes = [];
+  if (out) notes.push("岡山県外（" + c.pref + c.city + "）になりました。違うときは市町村から入れてください");
+  if (others.length) notes.push("同じ町名が" + others.slice(0, 2).join("・") + (others.length > 2 ? "など" : "") + "にもあります");
+  return {full: (out ? c.pref : "") + c.city + addr, note: notes.join("。")};
 }
 
 async function geocodeAny(addr){
@@ -461,7 +467,13 @@ $("go").onclick = async () => {
   });
   $("go").disabled = true; $("go").textContent = "計算中…";
   try {
-    const resolve = async (addr, ref) => { const e = expandAddr(addr, ref); return {...await geocodeAny(e.full), full: e.full, note: e.note}; };
+    const resolve = async (addr, ref) => {
+      const e = expandAddr(addr, ref), g = await geocodeAny(e.full);
+      let note = e.note;
+      if (e.guessed && !/^(岡山県|岡山市|倉敷市)/.test(g.label) && !/^.{2,3}[都道府県]/.test(normAddr(addr)))
+        note = "市町村を入れていないので、岡山県外（" + g.label + "）になっている可能性があります";
+      return {...g, full: e.full, note};
+    };
     const p0 = here ? await getHere() : await resolve(start, null);
     const pts = [p0];
     for (const s of list){ const p = await resolve(s.addr, p0); s.addr = p.full; pts.push(p); }
