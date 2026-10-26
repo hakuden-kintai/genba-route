@@ -69,6 +69,8 @@ ol.result li{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-item
 .field{display:flex;gap:6px;align-items:center;font-size:14px}
 .works{align-items:center}
 .works .wl{font-size:13px;color:var(--sub);margin-right:2px}
+.workrow{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--sub)}
+.workrow input{width:84px}
 .manual{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--warn);font-weight:700;margin:0 0 8px}
 .manual button{font-size:13px;padding:5px 10px;color:var(--fg);font-weight:400}
 a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-decoration:none;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:700;white-space:nowrap}
@@ -151,7 +153,7 @@ const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.crea
 
 function addSite(){
   if (sites.length >= MAX){ $("msg").textContent = MAX + "件までです。"; return; }
-  sites.push({id: nextId++, addr: "", tz: "", from: "10:00", to: "12:00"});
+  sites.push({id: nextId++, addr: "", tz: "", from: "10:00", to: "12:00", work: ""});
   renderSites();
   const inputs = $("sites").querySelectorAll(".head input"); inputs[inputs.length - 1].focus();
 }
@@ -174,6 +176,12 @@ function renderSites(){
     times.append(from, " 〜 ", to);
     times.hidden = s.tz !== "T";
 
+    // 作業時間がわかっている現場だけ手で入れる。空なら今日の仕事の時間（配送30〜60分など）
+    const [wa, wb] = WORK[$("job_a").checked ? "a" : "d"];
+    const work = el("input", {type: "number", min: "0", step: "10", inputMode: "numeric", id: "work" + s.id, value: s.work, placeholder: wa + "〜" + wb});
+    work.oninput = () => { s.work = work.value; };
+    const workRow = el("div", {className: "workrow"}, el("span", {className: "wl", textContent: "作業時間"}), work, "分（わかっていれば）");
+
     const choices = el("div", {className: "choices"});
     [["AM","AM"],["PM","PM"],["","指定なし"],["T","時間指定"]].forEach(([v, label]) => {
       const r = el("input", {type: "radio", name: "tz" + s.id, id: "tz" + s.id + "_" + (v || "N"), value: v, checked: s.tz === v});
@@ -184,13 +192,14 @@ function renderSites(){
 
     box.append(el("div", {className: "site"},
       el("div", {className: "head"}, el("span", {className: "n", textContent: i + 1}), addr, del),
-      choices, times));
+      choices, times, workRow));
   });
   $("add").hidden = sites.length >= MAX;
   updateGo();
 }
 
 $("add").onclick = addSite;
+$("job_d").onchange = $("job_a").onchange = () => renderSites();
 $("reset").onclick = () => { cur.order = cur.best.slice(); render(false); };
 
 // 現在地モード。GPSを使うので出発地の住所欄は隠す
@@ -438,7 +447,11 @@ $("go").onclick = async () => {
     const end = dest ? list.length + 1 : -1;
     const depart = toMin($("depart").value) ?? 8 * 60;
     const [wmin, wmax] = WORK[$("job_a").checked ? "a" : "d"];
-    list.forEach(s => { s.wmin = wmin; s.wmax = wmax; s.work = (wmin + wmax) / 2; });
+    list.forEach(s => {
+      const m = parseInt(s.work, 10);
+      if (m >= 0){ s.wmin = s.wmax = s.work = m; } // 手で入れた時間はそのまま
+      else { s.wmin = wmin; s.wmax = wmax; s.work = (wmin + wmax) / 2; }
+    });
     const order = solve(dur, list, end, depart);
     cur = {start: here ? start : p0.full, dest: destFull, order, best: order.slice(), list, dur, dist, pts, end, depart};
     render(true);
