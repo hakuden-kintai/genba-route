@@ -61,6 +61,10 @@ ol.result li{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-item
 .moves button{flex:1;min-width:38px;min-height:36px;padding:0;font-size:15px;line-height:1}
 .moves button:disabled{opacity:.3}
 .when{font-size:13px}
+.tell{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0;padding:6px 8px;border-radius:6px;background:var(--bg);font-size:13px}
+.tell b{font-size:16px;color:var(--accent)}
+.tell button{font-size:12px;padding:4px 8px}
+.wl{font-size:13px;color:var(--sub);margin-right:2px}
 .late{color:var(--warn);font-weight:700}
 .field{display:flex;gap:6px;align-items:center;font-size:14px}
 .works{align-items:center}
@@ -109,6 +113,10 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
 
   <section id="out" hidden>
     <h2>回る順番</h2>
+    <div class="choices" id="widthRow" style="margin-bottom:8px"><span class="wl">お客様に伝える時間の幅</span>
+      <label><input type="radio" name="width" id="width2" value="2" checked> 2時間</label>
+      <label><input type="radio" name="width" id="width3" value="3"> 3時間</label>
+    </div>
     <div id="total" class="total"></div>
     <div id="manual" class="manual" hidden><span id="manualMsg"></span> <button id="reset">最短の順番に戻す</button></div>
     <p class="hint" style="margin:0 0 8px">▲▼で順番を入れ替えられます。時間は入れ替えた順番で計算し直します。到着時刻は作業時間から出した目安です。</p>
@@ -190,6 +198,7 @@ function renderSites(){
 }
 
 $("add").onclick = addSite;
+$("width2").onchange = $("width3").onchange = () => cur && render(false);
 $("reset").onclick = () => { cur.order = cur.best.slice(); render(false); };
 
 // 現在地モード。GPSを使うので出発地の住所欄は隠す
@@ -339,6 +348,18 @@ let lastRoad = false;
 // 今表示している結果。order を▲▼で入れ替えて描き直す。best は計算で出た最短の順番
 let cur = null;
 const render = scroll => show(cur.start, cur.dest, cur.order, cur.list, cur.dur, cur.dist, cur.pts, cur.end, scroll);
+// お客様に伝える時間の幅。作業を始める見込みの30分前の「時」から、2時間（または3時間）
+// 例：13:10ごろ着 → 12時〜14時、13:40ごろ着 → 13時〜15時。AMは12時まで、PMは12時から。時間指定はその時間をそのまま
+const hourText = m => Math.floor(m / 60) + "時" + (m % 60 ? m % 60 + "分" : "");
+function tellWindow(s, r){
+  if (s.tz === "T") return hourText(s.fromMin) + "〜" + hourText(s.toMin);
+  const width = ($("width3").checked ? 3 : 2) * 60;
+  let a = Math.floor((r.start - 30) / 60) * 60, b = a + width;
+  if (s.tz === "AM" && b > NOON){ b = NOON; a = Math.min(a, NOON - 60); }
+  if (s.tz === "PM" && a < NOON){ a = NOON; b = a + width; }
+  return hourText(a) + "〜" + hourText(b);
+}
+
 // その順番で回ったときに終わる時刻（分）
 function finishOf(order){
   let t = cur.depart, prev = 0;
@@ -448,7 +469,13 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
     if (r.start > r.arrive + 1) when.append("（" + hhmm(r.start) + "まで待ち）");
     if (r.late > 0) when.append(el("span", {className: "late", textContent: " 約" + Math.ceil(r.late) + "分遅れ"}));
     if (r.leave != null) when.append("・作業" + Math.round(r.leave - r.start) + "分");
-    const body = el("div", {}, top, when, leg, area); body.style.minWidth = "0";
+    let tell = null;
+    if (r.tell){
+      const btn = el("button", {textContent: "連絡文をコピー"});
+      btn.onclick = () => copyText("明日は" + r.tell + "の間にお伺いします。", btn);
+      tell = el("div", {className: "tell"}, "お客様へ ", el("b", {textContent: r.tell}), btn);
+    }
+    const body = el("div", {}, top, ...(tell ? [tell] : []), when, leg, area); body.style.minWidth = "0";
     const right = el("div", {className: "right"}, a);
     if (n != null){
       const up = el("button", {textContent: "▲", title: "1つ前へ", disabled: n === 0});
@@ -464,6 +491,7 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
     const s = list[k];
     const label = s.tz === "T" ? hhmm(s.fromMin) + "〜" + hhmm(s.toMin) : s.tz;
     const r = step(clock + dur[prevIdx][k+1] / 60, s); clock = r.leave;
+    r.tell = tellWindow(s, r);
     if (r.late > 0) lateCount++;
     addRow(n + 1, label, s.tz, s.addr, dur[prevIdx][k+1], dist[prevIdx][k+1], pts[k+1], n, r);
     prevAddr = s.addr; prevIdx = k + 1;
@@ -504,14 +532,16 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
   if (scroll) $("out").scrollIntoView({behavior: "smooth"});
 }
 
-$("copy").onclick = async () => {
-  try { await navigator.clipboard.writeText(lastText); $("copied").textContent = "コピーしました"; }
+async function copyText(text, btn){
+  const done = msg => { const old = btn.textContent; btn.textContent = msg; setTimeout(() => btn.textContent = old, 1500); };
+  try { await navigator.clipboard.writeText(text); done("コピーしました"); }
   catch(e){
-    const t = document.createElement("textarea"); t.value = lastText; document.body.appendChild(t); t.select();
-    try { document.execCommand("copy"); $("copied").textContent = "コピーしました"; } catch(_){ $("copied").textContent = "コピーできませんでした"; }
+    const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select();
+    try { document.execCommand("copy"); done("コピーしました"); } catch(_){ done("コピーできませんでした"); }
     t.remove();
   }
-};
+}
+$("copy").onclick = () => copyText(lastText, $("copy"));
 
 addSite(); document.activeElement.blur();
 </script>
