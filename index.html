@@ -125,8 +125,10 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
 
   <section>
     <h2>最終目的地</h2>
+    <label class="chk" style="margin:0 0 8px"><input id="destHere" type="checkbox"> 現在地に戻る</label>
     <input id="dest" type="text" placeholder="例：事務所、自宅、資材置き場の住所">
-    <p class="hint">空欄なら最後の現場で終わりになります。</p>
+    <p id="destHint" class="hint">空欄なら最後の現場で終わりになります。</p>
+    <p id="destHereHint" class="hint" hidden>今いる場所（スマホのGPS）を最終目的地にします。</p>
   </section>
 
   <button id="go" class="main-btn" disabled>回る順番を決める</button>
@@ -159,6 +161,7 @@ const MAX = 10;
 try {
   $("start").value = localStorage.getItem("start") || "";
   $("here").checked = localStorage.getItem("here") === "1";
+  $("destHere").checked = localStorage.getItem("destHere") === "1";
   $("dest").value = localStorage.getItem("dest") || "";
   if (localStorage.getItem("first")) $("first").value = localStorage.getItem("first");
   if (localStorage.getItem("job") === "a") $("job_a").checked = true;
@@ -229,8 +232,10 @@ $("reset").onclick = () => { cur.order = cur.best.slice(); render(false); };
 function applyHere(){
   const on = $("here").checked;
   $("hereHint").hidden = !on; $("start").hidden = on;
+  const d = $("destHere").checked;
+  $("dest").hidden = d; $("destHint").hidden = d; $("destHereHint").hidden = !d;
 }
-$("here").onchange = applyHere;
+$("here").onchange = $("destHere").onchange = applyHere;
 applyHere();
 
 // 住所 → 緯度経度（ネットにつながらないとき用）。アプリに入っている町名データ（ADDR）から探す
@@ -458,13 +463,14 @@ const dura = s => { const m = mins(s); return m >= 60 ? Math.floor(m / 60) + "�
 
 $("go").onclick = async () => {
   const here = $("here").checked;
-  const start = here ? "現在地" : $("start").value.trim(), dest = $("dest").value.trim();
+  const destHere = $("destHere").checked;
+  const start = here ? "現在地" : $("start").value.trim(), dest = destHere ? "現在地" : $("dest").value.trim();
   $("msg").textContent = "";
   if (!start){ $("msg").textContent = "出発地を入れてください。"; return; }
   try {
     if (!here) localStorage.setItem("start", start);
-    localStorage.setItem("dest", dest); localStorage.setItem("first", $("first").value); localStorage.setItem("job", $("job_a").checked ? "a" : "d");
-    localStorage.setItem("here", here ? "1" : "0");
+    if (!destHere) localStorage.setItem("dest", dest); localStorage.setItem("first", $("first").value); localStorage.setItem("job", $("job_a").checked ? "a" : "d");
+    localStorage.setItem("here", here ? "1" : "0"); localStorage.setItem("destHere", destHere ? "1" : "0");
   } catch(e){}
   const list = sites.filter(s => s.addr.trim()).map(s => {
     let a = toMin(s.from) ?? 0, b = toMin(s.to) ?? DAY; if (a > b) [a, b] = [b, a];
@@ -483,7 +489,12 @@ $("go").onclick = async () => {
     const pts = [p0];
     for (const s of list){ const p = await resolve(s.addr, p0); s.addr = p.full; pts.push(p); }
     let destFull = dest;
-    if (dest){ const p = await resolve(dest, p0); destFull = p.full; pts.push(p); }
+    if (destHere){
+      // 現在地に戻る：GPSの位置。Googleマップには緯度・経度で渡す
+      const p = here ? p0 : await getHere();
+      destFull = p.lat.toFixed(6) + "," + p.lng.toFixed(6);
+      pts.push({...p, shown: "現在地"});
+    } else if (dest){ const p = await resolve(dest, p0); destFull = p.full; pts.push(p); }
     const {dur: raw, dist, road} = await matrixAny(pts);
     // 移動時間は10分単位に繰り上げる（13分 → 20分）
     const dur = raw.map(row => row.map(t => Math.ceil(t / 600) * 600));
@@ -518,7 +529,7 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
   const addRow = (mark, label, tz, addr, t, d, p, n, r) => {
     const top = el("div");
     if (label) top.append(el("span", {className: "tag " + tz, textContent: label}));
-    top.append(addr);
+    top.append(p.shown || addr);
     const leg = el("div", {className: "leg"}, "前の地点から ", el("b", {textContent: "約" + dura(t)}), "・" + (d/1000).toFixed(1) + "km");
     const a = el("a", {className: "nav", target: "_blank", rel: "noopener", href: mapsDir(prevAddr, addr, []), textContent: "ナビ"});
     const area = el("div", {className: "area" + (p.approx || p.note ? " approx" : ""),
