@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>現場まわり順 使い方</title>
+<style>
+/* アプリと同じ色。1列のスマホ向け */
+:root{
+  --bg:#f3f5f4; --card:#ffffff; --fg:#1b2420; --sub:#5d6b65; --line:#d5ddd9;
+  --accent:#0f6b4f; --accent-fg:#ffffff; --am:#c26a00; --pm:#2958a8; --warn:#b3261e;
+  --font:"Hiragino Sans","Noto Sans JP","Yu Gothic",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#121715; --card:#1b2220; --fg:#e6ece9; --sub:#9aa8a2; --line:#2e3935;
+  --accent:#3fb489; --accent-fg:#0b1310; --am:#f0a040; --pm:#7ea6ec; --warn:#ff8a80; color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.75 var(--font);
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:40px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:600px;margin:0 auto;display:grid;gap:14px;padding-top:14px}
+h1{font-size:24px;margin:4px 0 0;text-wrap:balance}
+h2{font-size:18px;margin:0 0 8px;display:flex;gap:8px;align-items:center}
+h2 .n{width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center;font-size:15px;flex:none}
+h3{font-size:16px;margin:14px 0 4px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+p{margin:0 0 8px}
+ol,ul{margin:0 0 8px;padding-left:1.4em}
+li{margin:4px 0}
+b{color:var(--fg)}
+.lead{color:var(--sub)}
+.btn{display:block;text-align:center;background:var(--accent);color:var(--accent-fg);text-decoration:none;font-weight:700;font-size:17px;padding:14px;border-radius:10px}
+.ui{display:inline-block;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:0 6px;font-size:14px;font-weight:700;white-space:nowrap}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:0 6px;border-radius:4px;border:1px solid}
+.tag.AM{color:var(--am)}.tag.PM{color:var(--pm)}
+.red{color:var(--warn);font-weight:700}
+.note{border-left:4px solid var(--warn);padding:8px 12px;background:var(--bg);border-radius:0 8px 8px 0;font-size:15px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+td{border-top:1px solid var(--line);padding:8px 4px;vertical-align:top}
+td:first-child{white-space:nowrap;font-weight:700;padding-right:10px}
+.warns{display:grid;gap:0}
+.warns>div{border-top:1px solid var(--line);padding:8px 0;font-size:15px}
+.warns>div:first-child{border-top:0}
+</style>
+</head>
+<body>
+<main>
+  <h1>現場まわり順　使い方</h1>
+  <p class="lead">狛電工業　社内用</p>
+
+  <section>
+    <p>現場の住所を入れると、<b>運転がいちばん短い回る順番</b>と、<b>お客様に伝える時間（例：13時〜15時）</b>を出してくれるアプリです。</p>
+    <p>前の日の夜に翌日の現場を入れて、お客様への連絡に使ってください。</p>
+    <a class="btn" href="./">アプリを開く</a>
+  </section>
+
+  <section>
+    <h2><span class="n">1</span>最初に1回だけやること</h2>
+    <ol>
+      <li><b>Safari</b>（AndroidはChrome）でアプリを開く<br><span class="lead">LINEの中で開いた場合は、右下の「…」から「Safariで開く」を選ぶ</span></li>
+      <li>共有ボタン（□に↑のマーク）を押す</li>
+      <li><span class="ui">ホーム画面に追加</span> →「追加」を押す</li>
+    </ol>
+    <p>次からは、ホーム画面の「現場まわり順」のアイコンから開けます。</p>
+  </section>
+
+  <section>
+    <h2><span class="n">2</span>入れるもの</h2>
+    <h3>出発地</h3>
+    <ul>
+      <li>事務所などの住所を入れる</li>
+      <li>今いる場所から出るときは <span class="ui">現在地から出発する</span> にチェック<br><span class="lead">初めてのときは「位置情報の使用を許可」と出るので「許可」を押す</span></li>
+    </ul>
+    <h3>今日の仕事</h3>
+    <ul>
+      <li><span class="ui">配送（30〜60分）</span> か <span class="ui">エアコン（60〜90分）</span> を選ぶ</li>
+    </ul>
+    <h3>1件目に着く時刻</h3>
+    <ul>
+      <li>1件目に着きたい時刻を入れる（例：9:00）</li>
+      <li>何時に出発すればいいかは、アプリが出してくれる</li>
+    </ul>
+    <h3>現場（順番はバラバラでOK）</h3>
+    <ul>
+      <li>住所を入れる。<b>岡山県内なら町名からでOK</b>（例：<span class="ui">大供1-1-1</span>）</li>
+      <li>時間の約束を選ぶ：<span class="ui">AM</span> <span class="ui">PM</span> <span class="ui">指定なし</span> <span class="ui">時間指定</span><br><span class="lead">時間指定を選ぶと「何時から何時まで」を入れる欄が出る</span></li>
+      <li>作業時間がわかっている現場だけ、<span class="ui">作業時間</span> に分で入れる（90分を超える現場など）</li>
+      <li>どうしてもこの現場から行きたいときは <span class="ui">この現場を1件目にする</span> にチェック</li>
+      <li>2件目からは <span class="ui">＋ 現場を追加</span> で欄を増やす（10件まで）</li>
+    </ul>
+    <h3>最終目的地</h3>
+    <ul>
+      <li>帰る場所の住所を入れる。今いる場所に戻るなら <span class="ui">現在地に戻る</span> にチェック</li>
+      <li>空欄なら、最後の現場で終わり</li>
+    </ul>
+    <p>全部入れたら <span class="ui">回る順番を決める</span> を押す。</p>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span>結果の見かた</h2>
+    <table>
+      <tr><td>いちばん上</td><td>何時に出発すればいいか、何時ごろ帰れるか、運転時間の合計</td></tr>
+      <tr><td>地図</td><td>青い <b>出発</b> → 緑の番号の順 → 黒い <b>到着</b>。赤い線がルート</td></tr>
+      <tr><td>お客様へ</td><td><b>お客様に伝える時間</b>。この時間をお客様に連絡する</td></tr>
+      <tr><td>〇〇ごろ着</td><td>着く時刻の目安</td></tr>
+      <tr><td>ナビ</td><td>その現場までGoogleマップでナビ</td></tr>
+      <tr><td>▲▼</td><td>順番を自分で入れ替える。時間も計算し直す。<span class="ui">最短の順番に戻す</span> で元に戻る</td></tr>
+      <tr><td>まとめてナビ</td><td>全部の現場が入った状態でGoogleマップのナビが始まる</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="n">4</span>赤い字が出たとき</h2>
+    <div class="warns">
+      <div><div class="red">同じ町名が〇〇にもあります</div><div>→ 違う場所で計算しているかも。<b>市町村から入れ直す</b>（例：岡山市南区西市100）</div></div>
+      <div><div class="red">岡山県外になりました</div><div>→ 町名だけだと県外の場所になった。<b>市町村から入れ直す</b></div></div>
+      <div><div class="red">町名が見つからず〇〇の中心で計算</div><div>→ 住所が読めていない。時間が大きくずれる。<b>町名まで入れ直す</b></div></div>
+      <div><div class="red">約〇分遅れ</div><div>→ 約束の時間に間に合わない。順番か1件目の時刻を見直す</div></div>
+      <div><div class="red">作業が長引くと約束の時間を過ぎるかも</div><div>→ ふつうなら間に合う。お客様への連絡のときに一言そえる</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">5</span>困ったとき</h2>
+    <ul>
+      <li><b>画面が古い・説明と違う</b>：右上の <span class="ui">アプリを更新</span> を押す</li>
+      <li><b>現在地が使えない</b>：iPhoneの「設定」→「プライバシーとセキュリティ」→「位置情報サービス」→「Safari」を「使用中のみ」にする</li>
+      <li><b>それでも困ったら</b>：社長に相談</li>
+    </ul>
+    <div class="note">時間は道路の距離から出した<b>目安</b>です。渋滞や作業の長引きは入っていません。お客様には、余裕をもって伝えてください。</div>
+  </section>
+
+  <a class="btn" href="./">アプリを開く</a>
+</main>
+</body>
+</html>
