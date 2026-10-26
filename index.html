@@ -385,7 +385,9 @@ function show(start, dest, order, list, dur, dist, pts, end){
     const chunk = stops.slice(i, i + 4);
     const a = document.createElement("a"); a.target = "_blank"; a.rel = "noopener";
     a.href = mapsDir(from, chunk[chunk.length-1], chunk.slice(0, -1));
-    a.textContent = "Googleマップでまとめてナビ" + (stops.length > 4 ? "（その" + part + "：" + (i+1) + "〜" + (i+chunk.length) + "件目）" : "");
+    // ボタンに回る番号を出す（例：1→2→3→4、続きは 5→着）
+    const marks = chunk.map((_, k) => (i + k < order.length) ? String(i + k + 1) : "着").join("→");
+    a.textContent = stops.length <= 4 ? "Googleマップでまとめてナビ" : (part === 1 ? "Googleマップでナビ（" : "着いたら続きをナビ（") + marks + "）";
     box.appendChild(a);
     from = chunk[chunk.length-1]; i += 4; part++;
   }
