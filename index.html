@@ -422,7 +422,8 @@ function show(start, dest, order, list, dur, dist, pts, end){
     box.appendChild(a);
     from = chunk[chunk.length-1]; i += PER; part++;
   }
-  lastText = lines.join("\n");
+  // LINE用はまとめルートのリンクだけ
+  lastText = ["【今日のルート】", $("total").textContent, ...[...box.querySelectorAll("a")].map(a => a.href)].join("\n");
   $("out").hidden = false; $("out").scrollIntoView({behavior: "smooth"});
 }
 
