@@ -466,11 +466,7 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
     if (r.late > 0) when.append(el("span", {className: "late", textContent: " 約" + Math.ceil(r.late) + "分遅れ"}));
     else if (r.risk) when.append(el("span", {className: "late", textContent: " 作業が長引くと約束の時間を過ぎるかも"}));
     let tell = null;
-    if (r.tell){
-      const btn = el("button", {textContent: "連絡文をコピー"});
-      btn.onclick = () => copyText("明日は" + r.tell + "の間にお伺いします。", btn);
-      tell = el("div", {className: "tell"}, "お客様へ ", el("b", {textContent: r.tell}), btn);
-    }
+    if (r.tell) tell = el("div", {className: "tell"}, "お客様へ ", el("b", {textContent: r.tell}));
     const body = el("div", {}, top, ...(tell ? [tell] : []), when, leg, area); body.style.minWidth = "0";
     const right = el("div", {className: "right"}, a);
     if (n != null){
