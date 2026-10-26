@@ -378,13 +378,19 @@ async function matrixAny(pts){
   return {...matrix(pts), road: false};
 }
 
-const getHere = () => new Promise((ok, ng) => {
-  if (!navigator.geolocation) return ng(new Error("このブラウザでは現在地が使えません。"));
-  navigator.geolocation.getCurrentPosition(
-    p => ok({lat: p.coords.latitude, lng: p.coords.longitude, approx: false, label: "現在地"}),
-    () => ng(new Error("現在地が取れませんでした。位置情報を「許可」にするか、チェックを外して住所を入れてください。")),
-    {enableHighAccuracy: true, timeout: 15000, maximumAge: 60000});
-});
+// 現在地。まずGPSで、取れなければ（室内などで）精度を落として、もう一度ためす
+const askHere = high => new Promise((ok, ng) => navigator.geolocation.getCurrentPosition(
+  p => ok({lat: p.coords.latitude, lng: p.coords.longitude, approx: false, label: "現在地"}), ng,
+  {enableHighAccuracy: high, timeout: high ? 15000 : 20000, maximumAge: 5 * 60000}));
+async function getHere(){
+  if (!navigator.geolocation) throw new Error("このブラウザでは現在地が使えません。チェックを外して住所を入れてください。");
+  try { return await askHere(true); }
+  catch(e){
+    if (e.code !== 1) { try { return await askHere(false); } catch(e2){ e = e2; } }
+    if (e.code === 1) throw new Error("現在地が使えない設定になっています。iPhoneは「設定」→「プライバシーとセキュリティ」→「位置情報サービス」→「Safariのサイト」を「使用中のみ」にしてください。それでもだめなら、画面下の住所の欄の「ぁあ」→「Webサイトの設定」→「位置情報」を「許可」に。");
+    throw new Error("現在地が取れませんでした（電波やGPSが届きにくい場所かもしれません）。少し待ってもう一度押すか、チェックを外して住所を入れてください。");
+  }
+}
 let lastRoad = false;
 // 今表示している結果。order を▲▼で入れ替えて描き直す。best は計算で出た最短の順番
 let cur = null;
