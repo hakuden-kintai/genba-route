@@ -89,6 +89,8 @@ ol.result li{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-item
 .pin.start.goal{background:linear-gradient(90deg,#1a56db 50%,#111 50%)}
 .firstrow{display:flex;gap:6px;align-items:center;font-size:14px}
 .firstrow input{accent-color:var(--accent);width:18px;height:18px;margin:0}
+.caution{margin:0 0 10px;padding:8px 10px;border:1px solid var(--warn);border-radius:8px;color:var(--warn);font-size:14px;font-weight:700;line-height:1.6}
+.caution b{color:var(--warn);text-decoration:underline}
 .manual{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--warn);font-weight:700;margin:0 0 8px}
 .manual button{font-size:13px;padding:5px 10px;color:var(--fg);font-weight:400}
 a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-decoration:none;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:700;white-space:nowrap}
@@ -142,13 +144,13 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
   <section id="out" hidden>
     <h2>回る順番</h2>
     <div id="total" class="total"></div>
+    <p class="caution">時間は道路の距離から出した目安です。<b>渋滞・信号待ち・駐車の時間は入っていません。</b>お客様には余裕をもって伝えてください。</p>
     <div id="manual" class="manual" hidden><span id="manualMsg"></span> <button id="reset">最短の順番に戻す</button></div>
     <p class="hint" style="margin:0 0 8px">▲▼で順番を入れ替えられます。時間は入れ替えた順番で計算し直します。移動時間と作業時間は10分単位に繰り上げて計算しています。到着時刻は、作業が早く終わる現場と長引く現場が混ざる前提での目安です。順番は、作業時間の真ん中（配送45分・エアコン75分）で決めています。</p>
     <div id="map" hidden></div>
     <ol id="result" class="result"></ol>
     <div id="links" class="links"></div>
     <div class="row" style="margin-top:10px"><button id="copy">LINE用にコピー</button><span id="copied" class="hint"></span></div>
-    <p class="hint">時間は道路の距離から出した目安です。渋滞は入っていません。正確な道順は「ナビ」ボタンのGoogleマップで確認してください。</p>
   </section>
 </main>
 <script>
