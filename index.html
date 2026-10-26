@@ -333,7 +333,8 @@ async function geocodeAny(addr){
     const j = await r.json();
     if (Array.isArray(j) && j.length){
       const [lng, lat] = j[0].geometry.coordinates;
-      return {lat, lng, approx: false, label: j[0].properties.title};
+      const title = j[0].properties.title;
+      return {lat, lng, approx: /[市区町村郡]$/.test(title), label: title};
     }
   } catch(e){}
   return geocode(addr);
@@ -370,11 +371,13 @@ const WORK = {d: [30, 60], a: [60, 90]};
 // 2時間より狭いときは2時間にする。時間指定はその時間をそのまま
 const span = (a, b) => Math.round(a) === Math.round(b) ? hhmm(a) : hhmm(a) + "〜" + hhmm(b);
 const hourText = m => Math.floor(m / 60) + "時" + (m % 60 ? m % 60 + "分" : "");
-function tellWindow(s, early, late){
-  if (s.tz === "T") return hourText(s.fromMin) + "〜" + hourText(s.toMin);
-  const a = Math.floor(early.start / 60) * 60;
+// prevA は1つ前のお客様に伝えた時間の始まり。同じ時間にならないよう、少なくとも30分はずらす
+function tellWindow(s, early, late, prevA){
+  if (s.tz === "T") return {text: hourText(s.fromMin) + "〜" + hourText(s.toMin), a: s.fromMin};
+  let a = Math.floor(early.start / 60) * 60;
+  if (prevA != null) a = Math.max(a, prevA + 30);
   const b = Math.max(Math.ceil(late.start / 60) * 60, a + 120);
-  return hourText(a) + "〜" + hourText(b);
+  return {text: hourText(a) + "〜" + hourText(b), a};
 }
 
 // その順番で回ったときに終わる時刻（分）
@@ -488,7 +491,7 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
   const depart = cur.first - dur[0][order[0] + 1] / 60;
   // 作業時間のぶれは、早く終わる現場と長引く現場が混ざるので、件数に比例しては広がらない
   // （ぶれの2乗を足して平方根をとる）。spread2 はそこまでのぶれの2乗（分）
-  let spread2 = 0;
+  let spread2 = 0, prevA = null;
   const down10 = m => Math.floor(m / 10) * 10, up10 = m => Math.ceil(m / 10) * 10;
   const lines = ["【今日の現場順】", "出発：" + start];
   const addRow = (mark, label, tz, addr, t, d, p, n, r) => {
@@ -527,7 +530,7 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
     // PMの12時待ちなどで早い場合も遅い場合も同じ時刻に始まるなら、ぶれはそこで消える
     spread2 = ((l.start - e.start) / 2) ** 2 + ((s.wmax - s.wmin) / 2) ** 2;
     r.early = e; r.lateCase = l;
-    r.tell = tellWindow(s, e, l);
+    const w = tellWindow(s, e, l, prevA); r.tell = w.text; prevA = w.a;
     r.risk = r.late <= 0 && l.late > 0; // ふつうなら間に合うが、遅いと間に合わない
     if (r.late > 0) lateCount++;
     addRow(n + 1, label, s.tz, s.addr, dur[prevIdx][k+1], dist[prevIdx][k+1], pts[k+1], n, r);
