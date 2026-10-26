@@ -81,7 +81,7 @@ a.nav{background:var(--accent);color:var(--accent-fg);text-decoration:none;paddi
     <h2>現場（順番はバラバラでOK）</h2>
     <div id="sites" class="sites"></div>
     <button id="add" class="add">＋ 現場を追加</button>
-    <p class="hint">番地まで入れると正確になります。<br>AMの現場はPMの現場より先に回ります。時間指定の現場は、その時間帯に合う位置に入ります。</p>
+    <p class="hint">岡山・広島・香川・兵庫・鳥取なら、市町村を省いて町名からでOK（例：大供1-1-1）。番地まで入れると正確になります。<br>AMの現場はPMの現場より先に回ります。時間指定の現場は、その時間帯に合う位置に入ります。</p>
   </section>
 
   <section>
@@ -136,7 +136,7 @@ function updateGo(){ $("go").disabled = sites.filter(s => s.addr.trim()).length 
 function renderSites(){
   const box = $("sites"); box.innerHTML = "";
   sites.forEach((s, i) => {
-    const addr = el("input", {type: "text", id: "addr" + s.id, value: s.addr, placeholder: "現場の住所"});
+    const addr = el("input", {type: "text", id: "addr" + s.id, value: s.addr, placeholder: "例：大供1-1-1"});
     addr.oninput = () => { s.addr = addr.value; updateGo(); };
     const del = el("button", {className: "del", textContent: "×", title: "この現場を消す"});
     del.onclick = () => { sites.splice(i, 1); renderSites(); };
@@ -253,6 +253,31 @@ function matrix(pts){
 
 
 // ネットが使えるときは、国土地理院の住所検索（番地まで）と道路の時間（OSRM）を使う
+// 市町村が書いていない住所に、町名から市町村を足す
+// 同じ町名が何か所かあるときは、出発地に一番近い所（出発地がなければ岡山県内）を選ぶ
+function expandAddr(addr, ref){
+  const s = normAddr(addr);
+  const hasCity = /^(北海道|東京都|京都府|大阪府|.{2,3}県)/.test(s) ||
+    /^(岡山市|倉敷市|広島市|神戸市|姫路市)/.test(s) || CITIES.some(c => s.startsWith(c.city) || s.startsWith(c.short));
+  if (hasCity) return {full: addr, note: ""};
+  let hits = [], best = 0;
+  for (const c of CITIES) for (const k of c.keys){
+    if (k.length < best) break;
+    // 町名のすぐ後ろが番地（数字）か何もないときだけ。「大阪市…」を「大阪」と読まないように
+    // 「大供」だけのように丁目を書いていないときは、その町の丁目のどれかで代わりにする
+    const after = (s + "-").startsWith(k) ? (s + "-").slice(k.length) : (/\d+-$/.test(k) && s === k.replace(/\d+-$/, "")) ? "" : null;
+    if (after !== null && /^([\d-]|字|$)/.test(after)){
+      if (k.length > best){ hits = []; best = k.length; }
+      hits.push(c); break;
+    }
+  }
+  if (!hits.length) return {full: addr, note: ""};
+  const far = c => ref ? (c.towns[Object.keys(c.towns)[0]] && Math.hypot(c.center[0] - ref.lat, c.center[1] - ref.lng)) : (c.pref === "岡山県" ? 0 : 1);
+  hits.sort((a, b) => far(a) - far(b));
+  const others = [...new Set(hits.slice(1).map(c => c.city))];
+  return {full: hits[0].city + addr, note: others.length ? "同じ町名が" + others.slice(0, 2).join("・") + (others.length > 2 ? "など" : "") + "にもあります" : ""};
+}
+
 async function geocodeAny(addr){
   try {
     const r = await fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q=" + encodeURIComponent(addr));
@@ -338,13 +363,17 @@ $("go").onclick = async () => {
   });
   $("go").disabled = true; $("go").textContent = "計算中…";
   try {
-    const pts = [here ? await getHere() : await geocodeAny(start)];
-    for (const a of [...list.map(s => s.addr), ...(dest ? [dest] : [])]) pts.push(await geocodeAny(a));
+    const resolve = async (addr, ref) => { const e = expandAddr(addr, ref); return {...await geocodeAny(e.full), full: e.full, note: e.note}; };
+    const p0 = here ? await getHere() : await resolve(start, null);
+    const pts = [p0];
+    for (const s of list){ const p = await resolve(s.addr, p0); s.addr = p.full; pts.push(p); }
+    let destFull = dest;
+    if (dest){ const p = await resolve(dest, p0); destFull = p.full; pts.push(p); }
     const {dur, dist, road} = await matrixAny(pts);
     lastRoad = road;
     const end = dest ? list.length + 1 : -1;
     const order = solve(dur, list, end);
-    show(start, dest, order, list, dur, dist, pts, end);
+    show(here ? start : p0.full, destFull, order, list, dur, dist, pts, end);
   } catch(e){
     $("msg").textContent = (e && e.message) ? e.message : "計算できませんでした。";
   } finally { $("go").disabled = false; $("go").textContent = "回る順番を決める"; }
@@ -361,7 +390,8 @@ function show(start, dest, order, list, dur, dist, pts, end){
     top.append(addr);
     const leg = el("div", {className: "leg"}, "前の地点から ", el("b", {textContent: "約" + dura(t)}), "・" + (d/1000).toFixed(1) + "km");
     const a = el("a", {className: "nav", target: "_blank", rel: "noopener", href: mapsDir(prevAddr, addr, []), textContent: "ナビ"});
-    const area = el("div", {className: "area" + (p.approx ? " approx" : ""), textContent: p.approx ? "町名が見つからず「" + p.label + "」の中心で計算" : p.label + "で計算"});
+    const area = el("div", {className: "area" + (p.approx || p.note ? " approx" : ""),
+      textContent: (p.approx ? "町名が見つからず「" + p.label + "」の中心で計算" : p.label + "で計算") + (p.note ? "（" + p.note + "）" : "")});
     const body = el("div", {}, top, leg, area); body.style.minWidth = "0";
     ol.append(el("li", {}, el("div", {className: "num", textContent: mark}), body, a));
     lines.push(mark + ". " + (label ? "[" + label + "] " : "") + addr + "（前から約" + dura(t) + "・" + (d/1000).toFixed(1) + "km）\n   " + mapsDir(prevAddr, addr, []));
