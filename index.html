@@ -407,19 +407,20 @@ function show(start, dest, order, list, dur, dist, pts, end){
   $("total").textContent = "運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km" + (lastRoad ? "" : "（直線からの目安）");
   lines.splice(2, 0, "運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km");
 
-  // Googleマップのまとめルート。スマホでは経由地3つまでが確実なので区切る
+  // Googleマップのまとめルート。Googleマップは立ち寄り先9か所＋目的地までなので、それを超えるときだけ区切る
+  const PER = 10;
   const stops = order.map(k => list[k].addr); if (dest) stops.push(dest);
   const box = $("links"); box.innerHTML = "";
   let from = here ? "" : start, i = 0, part = 1;
   while (i < stops.length){
-    const chunk = stops.slice(i, i + 4);
+    const chunk = stops.slice(i, i + PER);
     const a = document.createElement("a"); a.target = "_blank"; a.rel = "noopener";
     a.href = mapsDir(from, chunk[chunk.length-1], chunk.slice(0, -1));
     // ボタンに回る番号を出す（例：1→2→3→4、続きは 5→着）
     const marks = chunk.map((_, k) => (i + k < order.length) ? String(i + k + 1) : "着").join("→");
-    a.textContent = stops.length <= 4 ? "Googleマップでまとめてナビ" : (part === 1 ? "Googleマップでナビ（" : "着いたら続きをナビ（") + marks + "）";
+    a.textContent = stops.length <= PER ? "Googleマップでまとめてナビ" : (part === 1 ? "Googleマップでナビ（" : "着いたら続きをナビ（") + marks + "）";
     box.appendChild(a);
-    from = chunk[chunk.length-1]; i += 4; part++;
+    from = chunk[chunk.length-1]; i += PER; part++;
   }
   lastText = lines.join("\n");
   $("out").hidden = false; $("out").scrollIntoView({behavior: "smooth"});
