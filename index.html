@@ -91,6 +91,10 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
     <input id="start" type="text" placeholder="例：岡山市北区大供1-1-1（事務所）">
     <p id="hereHint" class="hint" hidden>スマホのGPSで今いる場所から計算します。初めてのときは「位置情報の使用を許可」と出るので「許可」を押してください。</p>
     <div class="row" style="margin-top:10px">
+      <div class="choices"><span class="wl">今日の仕事</span>
+        <label><input type="radio" name="job" id="job_d" value="d" checked> 配送（30〜60分）</label>
+        <label><input type="radio" name="job" id="job_a" value="a"> エアコン（1〜2時間）</label>
+      </div>
       <label class="field">出発時刻 <input id="depart" type="time" value="08:00"></label>
     </div>
   </section>
@@ -113,13 +117,9 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
 
   <section id="out" hidden>
     <h2>回る順番</h2>
-    <div class="choices" id="widthRow" style="margin-bottom:8px"><span class="wl">お客様に伝える時間の幅</span>
-      <label><input type="radio" name="width" id="width2" value="2" checked> 2時間</label>
-      <label><input type="radio" name="width" id="width3" value="3"> 3時間</label>
-    </div>
     <div id="total" class="total"></div>
     <div id="manual" class="manual" hidden><span id="manualMsg"></span> <button id="reset">最短の順番に戻す</button></div>
-    <p class="hint" style="margin:0 0 8px">▲▼で順番を入れ替えられます。時間は入れ替えた順番で計算し直します。到着時刻は作業時間から出した目安です。</p>
+    <p class="hint" style="margin:0 0 8px">▲▼で順番を入れ替えられます。時間は入れ替えた順番で計算し直します。到着時刻は、作業が全部早く終わった場合〜全部遅く終わった場合の目安です。順番は、そのちょうど真ん中の作業時間で決めています。</p>
     <ol id="result" class="result"></ol>
     <div id="links" class="links"></div>
     <div class="row" style="margin-top:10px"><button id="copy">LINE用にコピー</button><span id="copied" class="hint"></span></div>
@@ -142,6 +142,7 @@ try {
   $("start").value = localStorage.getItem("start") || "";
   $("here").checked = localStorage.getItem("here") === "1";
   $("dest").value = localStorage.getItem("dest") || "";
+  if (localStorage.getItem("job") === "a") $("job_a").checked = true;
 } catch(e){}
 
 const toMin = v => { const m = /^(\d{1,2}):(\d{2})$/.exec(v || ""); return m ? +m[1] * 60 + +m[2] : null; };
@@ -150,7 +151,7 @@ const el = (tag, props = {}, ...kids) => { const e = Object.assign(document.crea
 
 function addSite(){
   if (sites.length >= MAX){ $("msg").textContent = MAX + "件までです。"; return; }
-  sites.push({id: nextId++, addr: "", tz: "", from: "10:00", to: "12:00", work: 60});
+  sites.push({id: nextId++, addr: "", tz: "", from: "10:00", to: "12:00"});
   renderSites();
   const inputs = $("sites").querySelectorAll(".head input"); inputs[inputs.length - 1].focus();
 }
@@ -173,14 +174,6 @@ function renderSites(){
     times.append(from, " 〜 ", to);
     times.hidden = s.tz !== "T";
 
-    // 作業時間は 30・60・90分 から選ぶ
-    const works = el("div", {className: "choices works"}, el("span", {className: "wl", textContent: "作業"}));
-    [30, 60, 90].forEach(m => {
-      const r = el("input", {type: "radio", name: "work" + s.id, id: "work" + s.id + "_" + m, value: m, checked: s.work === m});
-      r.onchange = () => { s.work = m; };
-      works.append(el("label", {}, r, m + "分"));
-    });
-
     const choices = el("div", {className: "choices"});
     [["AM","AM"],["PM","PM"],["","指定なし"],["T","時間指定"]].forEach(([v, label]) => {
       const r = el("input", {type: "radio", name: "tz" + s.id, id: "tz" + s.id + "_" + (v || "N"), value: v, checked: s.tz === v});
@@ -191,14 +184,13 @@ function renderSites(){
 
     box.append(el("div", {className: "site"},
       el("div", {className: "head"}, el("span", {className: "n", textContent: i + 1}), addr, del),
-      choices, times, works));
+      choices, times));
   });
   $("add").hidden = sites.length >= MAX;
   updateGo();
 }
 
 $("add").onclick = addSite;
-$("width2").onchange = $("width3").onchange = () => cur && render(false);
 $("reset").onclick = () => { cur.order = cur.best.slice(); render(false); };
 
 // 現在地モード。GPSを使うので出発地の住所欄は隠す
@@ -348,15 +340,16 @@ let lastRoad = false;
 // 今表示している結果。order を▲▼で入れ替えて描き直す。best は計算で出た最短の順番
 let cur = null;
 const render = scroll => show(cur.start, cur.dest, cur.order, cur.list, cur.dur, cur.dist, cur.pts, cur.end, scroll);
-// お客様に伝える時間の幅。作業を始める見込みの30分前の「時」から、2時間（または3時間）
-// 例：13:10ごろ着 → 12時〜14時、13:40ごろ着 → 13時〜15時。AMは12時まで、PMは12時から。時間指定はその時間をそのまま
+// 作業時間（分）：早ければ〜遅ければ
+const WORK = {d: [30, 60], a: [60, 120]};
+
+// お客様に伝える時間の幅。全部早く終わったときの到着〜全部遅く終わったときの到着を、ちょうどの「時」に広げる
+// 2時間より狭いときは2時間にする。時間指定はその時間をそのまま
 const hourText = m => Math.floor(m / 60) + "時" + (m % 60 ? m % 60 + "分" : "");
-function tellWindow(s, r){
+function tellWindow(s, early, late){
   if (s.tz === "T") return hourText(s.fromMin) + "〜" + hourText(s.toMin);
-  const width = ($("width3").checked ? 3 : 2) * 60;
-  let a = Math.floor((r.start - 30) / 60) * 60, b = a + width;
-  if (s.tz === "AM" && b > NOON){ b = NOON; a = Math.min(a, NOON - 60); }
-  if (s.tz === "PM" && a < NOON){ a = NOON; b = a + width; }
+  const a = Math.floor(early.start / 60) * 60;
+  const b = Math.max(Math.ceil(late.start / 60) * 60, a + 120);
   return hourText(a) + "〜" + hourText(b);
 }
 
@@ -425,7 +418,7 @@ $("go").onclick = async () => {
   if (!start){ $("msg").textContent = "出発地を入れてください。"; return; }
   try {
     if (!here) localStorage.setItem("start", start);
-    localStorage.setItem("dest", dest);
+    localStorage.setItem("dest", dest); localStorage.setItem("job", $("job_a").checked ? "a" : "d");
     localStorage.setItem("here", here ? "1" : "0");
   } catch(e){}
   const list = sites.filter(s => s.addr.trim()).map(s => {
@@ -444,6 +437,8 @@ $("go").onclick = async () => {
     lastRoad = road;
     const end = dest ? list.length + 1 : -1;
     const depart = toMin($("depart").value) ?? 8 * 60;
+    const [wmin, wmax] = WORK[$("job_a").checked ? "a" : "d"];
+    list.forEach(s => { s.wmin = wmin; s.wmax = wmax; s.work = (wmin + wmax) / 2; });
     const order = solve(dur, list, end, depart);
     cur = {start: here ? start : p0.full, dest: destFull, order, best: order.slice(), list, dur, dist, pts, end, depart};
     render(true);
@@ -456,6 +451,7 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
   const ol = $("result"); ol.innerHTML = "";
   const here = $("here").checked;
   let prevAddr = here ? "" : start, prevIdx = 0, tSum = 0, dSum = 0, clock = cur.depart, lateCount = 0;
+  let clockE = cur.depart, clockL = cur.depart; // 全部早く終わった場合・全部遅く終わった場合
   const lines = ["【今日の現場順】", "出発：" + start];
   const addRow = (mark, label, tz, addr, t, d, p, n, r) => {
     const top = el("div");
@@ -465,10 +461,10 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
     const a = el("a", {className: "nav", target: "_blank", rel: "noopener", href: mapsDir(prevAddr, addr, []), textContent: "ナビ"});
     const area = el("div", {className: "area" + (p.approx || p.note ? " approx" : ""),
       textContent: (p.approx ? "町名が見つからず「" + p.label + "」の中心で計算" : p.label + "で計算") + (p.note ? "（" + p.note + "）" : "")});
-    const when = el("div", {className: "when"}, el("b", {textContent: hhmm(r.arrive) + "着"}));
-    if (r.start > r.arrive + 1) when.append("（" + hhmm(r.start) + "まで待ち）");
+    const when = el("div", {className: "when"}, el("b", {textContent: r.early ? hhmm(r.early.start) + "〜" + hhmm(r.lateCase.start) + "ごろ着" : hhmm(r.arrive) + "〜" + hhmm(r.arriveL) + "ごろ着"}));
+    if (r.early && r.early.start > r.early.arrive + 1) when.append("（早く着いたら待ち）");
     if (r.late > 0) when.append(el("span", {className: "late", textContent: " 約" + Math.ceil(r.late) + "分遅れ"}));
-    if (r.leave != null) when.append("・作業" + Math.round(r.leave - r.start) + "分");
+    else if (r.risk) when.append(el("span", {className: "late", textContent: " 作業が長引くと約束の時間を過ぎるかも"}));
     let tell = null;
     if (r.tell){
       const btn = el("button", {textContent: "連絡文をコピー"});
@@ -490,15 +486,21 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
   order.forEach((k, n) => {
     const s = list[k];
     const label = s.tz === "T" ? hhmm(s.fromMin) + "〜" + hhmm(s.toMin) : s.tz;
-    const r = step(clock + dur[prevIdx][k+1] / 60, s); clock = r.leave;
-    r.tell = tellWindow(s, r);
+    const t = dur[prevIdx][k+1] / 60;
+    const r = step(clock + t, s); clock = r.leave;
+    const e = step(clockE + t, {...s, work: s.wmin}), l = step(clockL + t, {...s, work: s.wmax});
+    clockE = e.leave; clockL = l.leave;
+    r.early = e; r.lateCase = l;
+    r.tell = tellWindow(s, e, l);
+    r.risk = r.late <= 0 && l.late > 0; // ふつうなら間に合うが、遅いと間に合わない
     if (r.late > 0) lateCount++;
     addRow(n + 1, label, s.tz, s.addr, dur[prevIdx][k+1], dist[prevIdx][k+1], pts[k+1], n, r);
     prevAddr = s.addr; prevIdx = k + 1;
   });
   if (end >= 0){
-    clock += dur[prevIdx][end] / 60;
-    addRow("着", "", "", dest, dur[prevIdx][end], dist[prevIdx][end], pts[end], null, {arrive: clock, start: clock, late: 0});
+    const t = dur[prevIdx][end] / 60;
+    clock += t; clockE += t; clockL += t;
+    addRow("着", "", "", dest, dur[prevIdx][end], dist[prevIdx][end], pts[end], null, {arrive: clockE, arriveL: clockL, start: clock, late: 0});
   }
   // 入れ替えたときは、最短との差と順番の注意を出す
   const changed = order.some((k, i) => k !== cur.best[i]);
@@ -508,7 +510,7 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
     $("manualMsg").textContent = "入れ替え中：" + (diff > 0 ? "終わりが約" + diff + "分遅くなります" : diff < 0 ? "終わりが約" + (-diff) + "分早くなります" : "終わる時刻は同じです");
   }
   $("msg").textContent = lateCount ? "時間に間に合わない現場が" + lateCount + "件あります。" + (changed ? "順番を見直してください。" : "出発時刻か作業時間を見直してください。") : "";
-  $("total").textContent = hhmm(cur.depart) + "出発 → " + hhmm(clock) + "ごろ" + (end >= 0 ? "最終目的地に到着" : "最後の現場が終わり") + "\n運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km" + (lastRoad ? "" : "（直線からの目安）");
+  $("total").textContent = hhmm(cur.depart) + "出発 → " + hhmm(clockE) + "〜" + hhmm(clockL) + "ごろ" + (end >= 0 ? "最終目的地に到着" : "最後の現場が終わり") + "\n運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km" + (lastRoad ? "" : "（直線からの目安）");
   lines.splice(2, 0, "運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km");
 
   // Googleマップのまとめルート。Googleマップは立ち寄り先9か所＋目的地までなので、それを超えるときだけ区切る
