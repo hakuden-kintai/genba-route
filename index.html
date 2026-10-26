@@ -71,9 +71,12 @@ ol.result li{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-item
 .works .wl{font-size:13px;color:var(--sub);margin-right:2px}
 .workrow{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--sub)}
 .workrow input{width:84px}
+#map .leaflet-tile-pane{filter:grayscale(1) contrast(.9)}
 #map{height:280px;border-radius:8px;border:1px solid var(--line);margin:0 0 10px;z-index:0}
 .pin{background:var(--accent);color:var(--accent-fg);border:2px solid #fff;border-radius:50%;display:grid!important;place-items:center;font-weight:700;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .pin.start{background:#555}
+.firstrow{display:flex;gap:6px;align-items:center;font-size:14px}
+.firstrow input{accent-color:var(--accent);width:18px;height:18px;margin:0}
 .manual{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--warn);font-weight:700;margin:0 0 8px}
 .manual button{font-size:13px;padding:5px 10px;color:var(--fg);font-weight:400}
 a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-decoration:none;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:700;white-space:nowrap}
@@ -187,6 +190,10 @@ function renderSites(){
     const [wa, wb] = WORK[$("job_a").checked ? "a" : "d"];
     const work = el("input", {type: "number", min: "0", step: "10", inputMode: "numeric", id: "work" + s.id, value: s.work, placeholder: wa + "〜" + wb});
     work.oninput = () => { s.work = work.value; };
+    // 1件目にする（1つの現場だけ）
+    const fx = el("input", {type: "checkbox", id: "fix" + s.id, checked: !!s.fix});
+    fx.onchange = () => { sites.forEach(o => o.fix = false); s.fix = fx.checked; renderSites(); };
+    const firstRow = el("label", {className: "firstrow"}, fx, "この現場を1件目にする");
     const workRow = el("div", {className: "workrow"}, el("span", {className: "wl", textContent: "作業時間"}), work, "分（わかっていれば）");
 
     const choices = el("div", {className: "choices"});
@@ -199,7 +206,7 @@ function renderSites(){
 
     box.append(el("div", {className: "site"},
       el("div", {className: "head"}, el("span", {className: "n", textContent: i + 1}), addr, del),
-      choices, times, workRow));
+      choices, times, workRow, firstRow));
   });
   $("add").hidden = sites.length >= MAX;
   updateGo();
@@ -401,6 +408,7 @@ function step(t, s){
 // dur は秒、時刻は分。end は最終目的地の番号（なければ -1）
 // first は1件目に着く時刻。1件目はどの現場でもその時刻に着くとして（出発はそこから逆算）組む
 function solve(dur, list, end, first){
+  const fixed = list.findIndex(s => s.fix);
   const n = list.length, LATE = 1e6, DRIVE = 0.2 / 60;
   const score = (t, late, drive) => late * LATE + t + drive * DRIVE;
   let best = Infinity, bestOrder = [];
@@ -414,6 +422,7 @@ function solve(dur, list, end, first){
     }
     for (let j = 0; j < n; j++){
       if (used[j]) continue;
+      if (!order.length && fixed >= 0 && j !== fixed) continue; // 1件目が決まっているとき
       const d = dur[pos][j+1], r = step(order.length ? t + d / 60 : first, list[j]);
       used[j] = true; order.push(j);
       dfs(j + 1, r.leave, late + r.late, drive + d);
@@ -571,14 +580,15 @@ async function drawMap(){
   $("map").hidden = false;
   if (!map){
     map = L.map("map");
-    L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png",
+    L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png",
       {maxZoom: 18, attribution: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a>'}).addTo(map);
   }
   map.invalidateSize();
   if (mapLayer) mapLayer.remove();
   mapLayer = L.layerGroup().addTo(map);
-  const color = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#0f6b4f";
-  const line = L.polyline(ll, {color, weight: 4, opacity: .6, dashArray: "6 8"}).addTo(mapLayer);
+  // 背景の地図は白黒にして、ルートは白いふち付きの赤い線で目立たせる
+  const edge = L.polyline(ll, {color: "#fff", weight: 9, opacity: .9}).addTo(mapLayer);
+  const line = L.polyline(ll, {color: "#d9342b", weight: 5, opacity: 1, dashArray: "8 8"}).addTo(mapLayer);
   // 出発地と最終目的地が同じ場所のときは「着」を上に重ねる
   seq.forEach((i, n) => {
     const last = cur.end >= 0 && n === seq.length - 1;
@@ -592,8 +602,9 @@ async function drawMap(){
     const r = await fetch("https://router.project-osrm.org/route/v1/driving/" + q + "?overview=full&geometries=geojson");
     const j = await r.json();
     if (j.code === "Ok" && key === mapKey){
-      line.setLatLngs(j.routes[0].geometry.coordinates.map(([x, y]) => [y, x]));
-      line.setStyle({dashArray: null, opacity: .85});
+      const road = j.routes[0].geometry.coordinates.map(([x, y]) => [y, x]);
+      edge.setLatLngs(road); line.setLatLngs(road);
+      line.setStyle({dashArray: null});
     }
   } catch(e){}
 }
