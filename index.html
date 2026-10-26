@@ -60,6 +60,9 @@ ol.result li{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-item
 .moves{display:flex;gap:4px}
 .moves button{flex:1;min-width:38px;min-height:36px;padding:0;font-size:15px;line-height:1}
 .moves button:disabled{opacity:.3}
+.when{font-size:13px}
+.late{color:var(--warn);font-weight:700}
+.field{display:flex;gap:6px;align-items:center;font-size:14px}
 .manual{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--warn);font-weight:700;margin:0 0 8px}
 .manual button{font-size:13px;padding:5px 10px;color:var(--fg);font-weight:400}
 a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-decoration:none;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:700;white-space:nowrap}
@@ -81,13 +84,17 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
     <label class="chk" style="margin:0 0 8px"><input id="here" type="checkbox"> 現在地から出発する</label>
     <input id="start" type="text" placeholder="例：岡山市北区大供1-1-1（事務所）">
     <p id="hereHint" class="hint" hidden>スマホのGPSで今いる場所から計算します。初めてのときは「位置情報の使用を許可」と出るので「許可」を押してください。</p>
+    <div class="row" style="margin-top:10px">
+      <label class="field">出発時刻 <input id="depart" type="time" value="08:00"></label>
+      <label class="field">作業時間 <input id="work" type="number" min="0" step="10" value="60"> 分／1現場</label>
+    </div>
   </section>
 
   <section>
     <h2>現場（順番はバラバラでOK）</h2>
     <div id="sites" class="sites"></div>
     <button id="add" class="add">＋ 現場を追加</button>
-    <p class="hint">岡山・広島・香川・兵庫・鳥取なら、市町村を省いて町名からでOK（例：大供1-1-1）。番地まで入れると正確になります。<br>AMの現場はPMの現場より先に回ります。時間指定の現場は、その時間帯に合う位置に入ります。</p>
+    <p class="hint">岡山・広島・香川・兵庫・鳥取なら、市町村を省いて町名からでOK（例：大供1-1-1）。番地まで入れると正確になります。<br>AMは12時までに到着、PMは12時から作業として計算します。時間指定は、その時間内に着くように組みます（早く着いたら待ち）。</p>
   </section>
 
   <section>
@@ -103,7 +110,7 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
     <h2>回る順番</h2>
     <div id="total" class="total"></div>
     <div id="manual" class="manual" hidden><span id="manualMsg"></span> <button id="reset">最短の順番に戻す</button></div>
-    <p class="hint" style="margin:0 0 8px">▲▼で順番を入れ替えられます。時間は入れ替えた順番で計算し直します。</p>
+    <p class="hint" style="margin:0 0 8px">▲▼で順番を入れ替えられます。時間は入れ替えた順番で計算し直します。到着時刻は作業時間から出した目安です。</p>
     <ol id="result" class="result"></ol>
     <div id="links" class="links"></div>
     <div class="row" style="margin-top:10px"><button id="copy">LINE用にコピー</button><span id="copied" class="hint"></span></div>
@@ -126,6 +133,7 @@ try {
   $("start").value = localStorage.getItem("start") || "";
   $("here").checked = localStorage.getItem("here") === "1";
   $("dest").value = localStorage.getItem("dest") || "";
+  if (localStorage.getItem("work")) $("work").value = localStorage.getItem("work");
 } catch(e){}
 
 const toMin = v => { const m = /^(\d{1,2}):(\d{2})$/.exec(v || ""); return m ? +m[1] * 60 + +m[2] : null; };
@@ -323,16 +331,11 @@ let lastRoad = false;
 // 今表示している結果。order を▲▼で入れ替えて描き直す。best は計算で出た最短の順番
 let cur = null;
 const render = scroll => show(cur.start, cur.dest, cur.order, cur.list, cur.dur, cur.dist, cur.pts, cur.end, scroll);
-function totalDur(order){
-  let t = 0, prev = 0;
-  for (const k of order){ t += cur.dur[prev][k+1]; prev = k + 1; }
-  return t + (cur.end >= 0 ? cur.dur[prev][cur.end] : 0);
-}
-// AM→PM などの順番が逆になっている現場があるか
-function wrongOrder(order){
-  const w = order.map(k => windowOf(cur.list[k]));
-  for (let a = 0; a < w.length; a++) for (let b = a + 1; b < w.length; b++) if (w[b][1] <= w[a][0]) return true;
-  return false;
+// その順番で回ったときに終わる時刻（分）
+function finishOf(order){
+  let t = cur.depart, prev = 0;
+  for (const k of order){ t = step(t + cur.dur[prev][k+1] / 60, cur.list[k]).leave; prev = k + 1; }
+  return t + (cur.end >= 0 ? cur.dur[prev][cur.end] / 60 : 0);
 }
 function move(n, dir){
   const o = cur.order, m = n + dir;
@@ -348,25 +351,35 @@ const windowOf = s => s.tz === "AM" ? [0, NOON] : s.tz === "PM" ? [NOON, DAY] : 
 // 全パターンを調べて運転時間が一番短い順番を選ぶ
 // 時間の枠が完全に前の現場は必ず先に回る（AM→PM、10〜12時→PM など）
 // dur は秒。end は最終目的地の番号（なければ -1）
-function solve(dur, list, end){
-  const n = list.length, w = list.map(windowOf);
-  const before = list.map((_, j) => list.map((_, i) => i !== j && w[i][1] <= w[j][0])); // before[j][i]: i を j より先に
+// 1件分の到着と作業。AMは12:00までに到着、PMは12:00から作業、時間指定は その時間内に到着（早く着いたら待つ）
+function step(t, s){
+  const [from, to] = windowOf(s), start = Math.max(t, from);
+  return {arrive: t, start, late: Math.max(0, t - to), leave: start + s.work};
+}
+
+// 全パターンを調べる。1. 遅れが一番少ない 2. 一番早く終わる 3. 運転が短い の順で選ぶ
+// （PMの現場に早く着きすぎて待つより、先に別の現場を片付ける順番が選ばれる）
+// dur は秒、時刻は分。end は最終目的地の番号（なければ -1）
+function solve(dur, list, end, depart){
+  const n = list.length, LATE = 1e6, DRIVE = 0.2 / 60;
+  const score = (t, late, drive) => late * LATE + t + drive * DRIVE;
   let best = Infinity, bestOrder = [];
   const used = new Array(n).fill(false), order = [];
-  (function dfs(pos, drive){
-    if (drive >= best) return;
+  (function dfs(pos, t, late, drive){
+    if (score(t, late, drive) >= best) return;
     if (order.length === n){
-      const total = drive + (end >= 0 ? dur[pos][end] : 0);
+      const last = end >= 0 ? dur[pos][end] : 0, total = score(t + last / 60, late, drive + last);
       if (total < best){ best = total; bestOrder = order.slice(); }
       return;
     }
     for (let j = 0; j < n; j++){
-      if (used[j] || before[j].some((must, i) => must && !used[i])) continue;
+      if (used[j]) continue;
+      const d = dur[pos][j+1], r = step(t + d / 60, list[j]);
       used[j] = true; order.push(j);
-      dfs(j + 1, drive + dur[pos][j+1]);
+      dfs(j + 1, r.leave, late + r.late, drive + d);
       used[j] = false; order.pop();
     }
-  })(0, 0);
+  })(0, depart, 0, 0);
   return bestOrder;
 }
 
@@ -383,7 +396,7 @@ $("go").onclick = async () => {
   if (!start){ $("msg").textContent = "出発地を入れてください。"; return; }
   try {
     if (!here) localStorage.setItem("start", start);
-    localStorage.setItem("dest", dest);
+    localStorage.setItem("dest", dest); localStorage.setItem("work", $("work").value);
     localStorage.setItem("here", here ? "1" : "0");
   } catch(e){}
   const list = sites.filter(s => s.addr.trim()).map(s => {
@@ -401,8 +414,10 @@ $("go").onclick = async () => {
     const {dur, dist, road} = await matrixAny(pts);
     lastRoad = road;
     const end = dest ? list.length + 1 : -1;
-    const order = solve(dur, list, end);
-    cur = {start: here ? start : p0.full, dest: destFull, order, best: order.slice(), list, dur, dist, pts, end};
+    const depart = toMin($("depart").value) ?? 8 * 60, work = Math.max(0, +$("work").value || 0);
+    list.forEach(s => s.work = work);
+    const order = solve(dur, list, end, depart);
+    cur = {start: here ? start : p0.full, dest: destFull, order, best: order.slice(), list, dur, dist, pts, end, depart};
     render(true);
   } catch(e){
     $("msg").textContent = (e && e.message) ? e.message : "計算できませんでした。";
@@ -412,9 +427,9 @@ $("go").onclick = async () => {
 function show(start, dest, order, list, dur, dist, pts, end, scroll){
   const ol = $("result"); ol.innerHTML = "";
   const here = $("here").checked;
-  let prevAddr = here ? "" : start, prevIdx = 0, tSum = 0, dSum = 0;
+  let prevAddr = here ? "" : start, prevIdx = 0, tSum = 0, dSum = 0, clock = cur.depart, lateCount = 0;
   const lines = ["【今日の現場順】", "出発：" + start];
-  const addRow = (mark, label, tz, addr, t, d, p, n) => {
+  const addRow = (mark, label, tz, addr, t, d, p, n, r) => {
     const top = el("div");
     if (label) top.append(el("span", {className: "tag " + tz, textContent: label}));
     top.append(addr);
@@ -422,7 +437,10 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
     const a = el("a", {className: "nav", target: "_blank", rel: "noopener", href: mapsDir(prevAddr, addr, []), textContent: "ナビ"});
     const area = el("div", {className: "area" + (p.approx || p.note ? " approx" : ""),
       textContent: (p.approx ? "町名が見つからず「" + p.label + "」の中心で計算" : p.label + "で計算") + (p.note ? "（" + p.note + "）" : "")});
-    const body = el("div", {}, top, leg, area); body.style.minWidth = "0";
+    const when = el("div", {className: "when"}, el("b", {textContent: hhmm(r.arrive) + "着"}));
+    if (r.start > r.arrive + 1) when.append("（" + hhmm(r.start) + "まで待ち）");
+    if (r.late > 0) when.append(el("span", {className: "late", textContent: " 約" + Math.ceil(r.late) + "分遅れ"}));
+    const body = el("div", {}, top, when, leg, area); body.style.minWidth = "0";
     const right = el("div", {className: "right"}, a);
     if (n != null){
       const up = el("button", {textContent: "▲", title: "1つ前へ", disabled: n === 0});
@@ -437,18 +455,24 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
   order.forEach((k, n) => {
     const s = list[k];
     const label = s.tz === "T" ? hhmm(s.fromMin) + "〜" + hhmm(s.toMin) : s.tz;
-    addRow(n + 1, label, s.tz, s.addr, dur[prevIdx][k+1], dist[prevIdx][k+1], pts[k+1], n);
+    const r = step(clock + dur[prevIdx][k+1] / 60, s); clock = r.leave;
+    if (r.late > 0) lateCount++;
+    addRow(n + 1, label, s.tz, s.addr, dur[prevIdx][k+1], dist[prevIdx][k+1], pts[k+1], n, r);
     prevAddr = s.addr; prevIdx = k + 1;
   });
-  if (end >= 0) addRow("着", "", "", dest, dur[prevIdx][end], dist[prevIdx][end], pts[end]);
+  if (end >= 0){
+    clock += dur[prevIdx][end] / 60;
+    addRow("着", "", "", dest, dur[prevIdx][end], dist[prevIdx][end], pts[end], null, {arrive: clock, start: clock, late: 0});
+  }
   // 入れ替えたときは、最短との差と順番の注意を出す
   const changed = order.some((k, i) => k !== cur.best[i]);
   $("manual").hidden = !changed;
   if (changed){
-    const diff = Math.round((tSum - totalDur(cur.best)) / 60);
-    $("manualMsg").textContent = "入れ替え中：最短より約" + Math.max(0, diff) + "分長い" + (wrongOrder(order) ? "／AM・PM・時間指定の順番が逆の現場あり" : "");
+    const diff = Math.round(clock - finishOf(cur.best));
+    $("manualMsg").textContent = "入れ替え中：" + (diff > 0 ? "終わりが約" + diff + "分遅くなります" : diff < 0 ? "終わりが約" + (-diff) + "分早くなります" : "終わる時刻は同じです");
   }
-  $("total").textContent = "運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km" + (lastRoad ? "" : "（直線からの目安）");
+  $("msg").textContent = lateCount ? "時間に間に合わない現場が" + lateCount + "件あります。" + (changed ? "順番を見直してください。" : "出発時刻か作業時間を見直してください。") : "";
+  $("total").textContent = hhmm(cur.depart) + "出発 → " + hhmm(clock) + "ごろ" + (end >= 0 ? "最終目的地に到着" : "最後の現場が終わり") + "\n運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km" + (lastRoad ? "" : "（直線からの目安）");
   lines.splice(2, 0, "運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km");
 
   // Googleマップのまとめルート。Googleマップは立ち寄り先9か所＋目的地までなので、それを超えるときだけ区切る
