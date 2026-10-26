@@ -121,7 +121,7 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
     <h2>回る順番</h2>
     <div id="total" class="total"></div>
     <div id="manual" class="manual" hidden><span id="manualMsg"></span> <button id="reset">最短の順番に戻す</button></div>
-    <p class="hint" style="margin:0 0 8px">▲▼で順番を入れ替えられます。時間は入れ替えた順番で計算し直します。到着時刻は、作業が全部早く終わった場合〜全部遅く終わった場合の目安です。順番は、そのちょうど真ん中の作業時間で決めています。</p>
+    <p class="hint" style="margin:0 0 8px">▲▼で順番を入れ替えられます。時間は入れ替えた順番で計算し直します。移動時間と作業時間は10分単位に繰り上げて計算しています。到着時刻は、作業が全部早く終わった場合〜全部遅く終わった場合の目安です。順番は、そのちょうど真ん中の作業時間で決めています。</p>
     <ol id="result" class="result"></ol>
     <div id="links" class="links"></div>
     <div class="row" style="margin-top:10px"><button id="copy">LINE用にコピー</button><span id="copied" class="hint"></span></div>
@@ -442,14 +442,16 @@ $("go").onclick = async () => {
     for (const s of list){ const p = await resolve(s.addr, p0); s.addr = p.full; pts.push(p); }
     let destFull = dest;
     if (dest){ const p = await resolve(dest, p0); destFull = p.full; pts.push(p); }
-    const {dur, dist, road} = await matrixAny(pts);
+    const {dur: raw, dist, road} = await matrixAny(pts);
+    // 移動時間は10分単位に繰り上げる（13分 → 20分）
+    const dur = raw.map(row => row.map(t => Math.ceil(t / 600) * 600));
     lastRoad = road;
     const end = dest ? list.length + 1 : -1;
     const depart = toMin($("depart").value) ?? 8 * 60;
     const [wmin, wmax] = WORK[$("job_a").checked ? "a" : "d"];
     list.forEach(s => {
       const m = parseInt(s.work, 10);
-      if (m >= 0){ s.wmin = s.wmax = s.work = m; } // 手で入れた時間はそのまま
+      if (m >= 0){ s.wmin = s.wmax = s.work = Math.ceil(m / 10) * 10; } // 手で入れた時間も10分単位に繰り上げ
       else { s.wmin = wmin; s.wmax = wmax; s.work = (wmin + wmax) / 2; }
     });
     const order = solve(dur, list, end, depart);
