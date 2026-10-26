@@ -102,7 +102,7 @@ a.nav{text-align:center;background:var(--accent);color:var(--accent-fg);text-dec
         <label><input type="radio" name="job" id="job_d" value="d" checked> 配送（30〜60分）</label>
         <label><input type="radio" name="job" id="job_a" value="a"> エアコン（60〜90分）</label>
       </div>
-      <label class="field">出発時刻 <input id="depart" type="time" value="08:00"></label>
+      <label class="field">1件目に着く時刻 <input id="first" type="time" value="09:00"></label>
     </div>
   </section>
 
@@ -150,6 +150,7 @@ try {
   $("start").value = localStorage.getItem("start") || "";
   $("here").checked = localStorage.getItem("here") === "1";
   $("dest").value = localStorage.getItem("dest") || "";
+  if (localStorage.getItem("first")) $("first").value = localStorage.getItem("first");
   if (localStorage.getItem("job") === "a") $("job_a").checked = true;
 } catch(e){}
 
@@ -371,8 +372,8 @@ function tellWindow(s, early, late){
 
 // その順番で回ったときに終わる時刻（分）
 function finishOf(order){
-  let t = cur.depart, prev = 0;
-  for (const k of order){ t = step(t + cur.dur[prev][k+1] / 60, cur.list[k]).leave; prev = k + 1; }
+  let t = 0, prev = 0;
+  for (const k of order){ t = step(prev ? t + cur.dur[prev][k+1] / 60 : cur.first, cur.list[k]).leave; prev = k + 1; }
   return t + (cur.end >= 0 ? cur.dur[prev][cur.end] / 60 : 0);
 }
 function move(n, dir){
@@ -398,7 +399,8 @@ function step(t, s){
 // 全パターンを調べる。1. 遅れが一番少ない 2. 一番早く終わる 3. 運転が短い の順で選ぶ
 // （PMの現場に早く着きすぎて待つより、先に別の現場を片付ける順番が選ばれる）
 // dur は秒、時刻は分。end は最終目的地の番号（なければ -1）
-function solve(dur, list, end, depart){
+// first は1件目に着く時刻。1件目はどの現場でもその時刻に着くとして（出発はそこから逆算）組む
+function solve(dur, list, end, first){
   const n = list.length, LATE = 1e6, DRIVE = 0.2 / 60;
   const score = (t, late, drive) => late * LATE + t + drive * DRIVE;
   let best = Infinity, bestOrder = [];
@@ -412,12 +414,12 @@ function solve(dur, list, end, depart){
     }
     for (let j = 0; j < n; j++){
       if (used[j]) continue;
-      const d = dur[pos][j+1], r = step(t + d / 60, list[j]);
+      const d = dur[pos][j+1], r = step(order.length ? t + d / 60 : first, list[j]);
       used[j] = true; order.push(j);
       dfs(j + 1, r.leave, late + r.late, drive + d);
       used[j] = false; order.pop();
     }
-  })(0, depart, 0, 0);
+  })(0, first, 0, 0);
   return bestOrder;
 }
 
@@ -434,7 +436,7 @@ $("go").onclick = async () => {
   if (!start){ $("msg").textContent = "出発地を入れてください。"; return; }
   try {
     if (!here) localStorage.setItem("start", start);
-    localStorage.setItem("dest", dest); localStorage.setItem("job", $("job_a").checked ? "a" : "d");
+    localStorage.setItem("dest", dest); localStorage.setItem("first", $("first").value); localStorage.setItem("job", $("job_a").checked ? "a" : "d");
     localStorage.setItem("here", here ? "1" : "0");
   } catch(e){}
   const list = sites.filter(s => s.addr.trim()).map(s => {
@@ -454,15 +456,15 @@ $("go").onclick = async () => {
     const dur = raw.map(row => row.map(t => Math.ceil(t / 600) * 600));
     lastRoad = road;
     const end = dest ? list.length + 1 : -1;
-    const depart = toMin($("depart").value) ?? 8 * 60;
+    const first = toMin($("first").value) ?? 9 * 60;
     const [wmin, wmax] = WORK[$("job_a").checked ? "a" : "d"];
     list.forEach(s => {
       const m = parseInt(s.work, 10);
       if (m >= 0){ s.wmin = s.wmax = s.work = Math.ceil(m / 10) * 10; } // 手で入れた時間も10分単位に繰り上げ
       else { s.wmin = wmin; s.wmax = wmax; s.work = (wmin + wmax) / 2; }
     });
-    const order = solve(dur, list, end, depart);
-    cur = {start: here ? start : p0.full, dest: destFull, order, best: order.slice(), list, dur, dist, pts, end, depart};
+    const order = solve(dur, list, end, first);
+    cur = {start: here ? start : p0.full, dest: destFull, order, best: order.slice(), list, dur, dist, pts, end, first};
     render(true);
   } catch(e){
     $("msg").textContent = (e && e.message) ? e.message : "計算できませんでした。";
@@ -472,7 +474,9 @@ $("go").onclick = async () => {
 function show(start, dest, order, list, dur, dist, pts, end, scroll){
   const ol = $("result"); ol.innerHTML = "";
   const here = $("here").checked;
-  let prevAddr = here ? "" : start, prevIdx = 0, tSum = 0, dSum = 0, clock = cur.depart, lateCount = 0;
+  let prevAddr = here ? "" : start, prevIdx = 0, tSum = 0, dSum = 0, clock = 0, lateCount = 0;
+  // 出発時刻は、1件目に着く時刻から1件目までの運転時間を引いて出す
+  const depart = cur.first - dur[0][order[0] + 1] / 60;
   // 作業時間のぶれは、早く終わる現場と長引く現場が混ざるので、件数に比例しては広がらない
   // （ぶれの2乗を足して平方根をとる）。spread2 はそこまでのぶれの2乗（分）
   let spread2 = 0;
@@ -508,7 +512,7 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
     const s = list[k];
     const label = s.tz === "T" ? hhmm(s.fromMin) + "〜" + hhmm(s.toMin) : s.tz;
     const t = dur[prevIdx][k+1] / 60;
-    const r = step(clock + t, s); clock = r.leave;
+    const r = step(n ? clock + t : cur.first, s); clock = r.leave;
     const sp = Math.sqrt(spread2);
     const e = step(down10(r.arrive - sp), s), l = step(up10(r.arrive + sp), s);
     // PMの12時待ちなどで早い場合も遅い場合も同じ時刻に始まるなら、ぶれはそこで消える
@@ -533,7 +537,7 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
   // ふつうに進んで19時を過ぎるなら、1日で回る量としては多すぎる
   const tooMuch = clock > 19 * 60 ? "ふつうに進んでも終わりが" + hhmm(clock) + "ごろになります。1日で回る量としては多すぎるかもしれません。" : "";
   $("msg").textContent = tooMuch + (lateCount ? "時間に間に合わない現場が" + lateCount + "件あります。" + (changed ? "順番を見直してください。" : "出発時刻か作業時間を見直してください。") : "");
-  $("total").textContent = hhmm(cur.depart) + "出発 → " + hhmm(clockE) + "〜" + hhmm(clockL) + "ごろ" + (end >= 0 ? "最終目的地に到着" : "最後の現場が終わり") + "\n運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km" + (lastRoad ? "" : "（直線からの目安）");
+  $("total").textContent = hhmm(depart) + "に出発 → " + hhmm(cur.first) + "に1件目着\n→ " + hhmm(clockE) + "〜" + hhmm(clockL) + "ごろ" + (end >= 0 ? "最終目的地に到着" : "最後の現場が終わり") + "\n運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km" + (lastRoad ? "" : "（直線からの目安）");
   lines.splice(2, 0, "運転時間 合計 約" + dura(tSum) + "・" + (dSum/1000).toFixed(1) + "km");
 
   // Googleマップのまとめルート。Googleマップは立ち寄り先9か所＋目的地までなので、それを超えるときだけ区切る
