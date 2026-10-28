@@ -81,6 +81,7 @@ ol.result li{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-item
 #map .leaflet-tile-pane{filter:grayscale(1) contrast(.9)}
 #map{height:280px;border-radius:8px;border:1px solid var(--line);margin:0 0 10px;z-index:0}
 .pin{background:var(--accent);color:var(--accent-fg);border:2px solid #fff;border-radius:50%;display:grid!important;place-items:center;font-weight:700;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.pin.multi{border-radius:14px}
 .pin.start,.pin.goal{border-radius:6px;font-size:13px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.5)}
 .pin.start{background:#1a56db;color:#fff}
 .pin.start{--c:#1a56db}.pin.goal{--c:#111}.pin.start.goal{--c:#fff}
@@ -645,16 +646,30 @@ async function drawMap(){
     L.circleMarker(pos, {radius: 6, color: "#fff", weight: 2, fillColor: cls === "goal" ? "#111" : "#1a56db", fillOpacity: 1}).addTo(mapLayer);
     L.marker(pos, {icon: L.divIcon({className: "pin " + cls, html: text, iconSize: [w, 26], iconAnchor: [w / 2, 40]}), zIndexOffset: 2000}).addTo(mapLayer);
   };
-  seq.forEach((i, n) => {
-    if (n === 0 || n === lastN) return;
-    L.marker(ll[n], {icon: L.divIcon({className: "pin", html: String(n), iconSize: [28, 28]}), zIndexOffset: n}).addTo(mapLayer);
-  });
+  map.fitBounds(line.getBounds(), {padding: [28, 28]});
+  // 番号の丸は、今の拡大率で重なる（画面上で26px以内）ものを「1・2」のように1つにまとめる。拡大・縮小のたびにまとめ直す
+  const pinLayer = L.layerGroup().addTo(mapLayer);
+  const drawPins = () => {
+    pinLayer.clearLayers();
+    const groups = [];
+    seq.forEach((i, n) => {
+      if (n === 0 || n === lastN) return;
+      const pt = map.latLngToLayerPoint(ll[n]);
+      const g = groups.find(g => g.pt.distanceTo(pt) < 26);
+      if (g) g.nums.push(n); else groups.push({pt, pos: ll[n], nums: [n]});
+    });
+    for (const g of groups){
+      const text = g.nums.join("・"), w = g.nums.length > 1 ? 14 + text.length * 8 : 28;
+      L.marker(g.pos, {icon: L.divIcon({className: "pin" + (g.nums.length > 1 ? " multi" : ""), html: text, iconSize: [w, 28]}), zIndexOffset: g.nums[0]}).addTo(pinLayer);
+    }
+  };
+  drawPins();
+  map.off("zoomend"); map.on("zoomend", drawPins);
   if (same) tag(ll[0], "start goal", "出発・到着", 84);
   else {
     tag(ll[0], "start", "出発", 48);
     if (lastN > 0) tag(ll[lastN], "goal", "到着", 48);
   }
-  map.fitBounds(line.getBounds(), {padding: [28, 28]});
   const key = mapKey = seq.join(",");
   try {
     const q = ll.map(([a, b]) => b.toFixed(5) + "," + a.toFixed(5)).join(";");
