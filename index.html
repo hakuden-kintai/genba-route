@@ -621,7 +621,7 @@ function show(start, dest, order, list, dur, dist, pts, end, scroll){
 }
 
 // 地図：回る順に番号の印と線。道路に沿った線が取れたら差し替える（地理院タイル）
-let map = null, mapLayer = null, mapKey = "";
+let map = null, mapLayer = null, mapKey = "", pinHandler = null;
 async function drawMap(){
   if (!window.L){ $("map").hidden = true; return; }
   const seq = [0, ...cur.order.map(k => k + 1), ...(cur.end >= 0 ? [cur.end] : [])];
@@ -664,7 +664,9 @@ async function drawMap(){
     }
   };
   drawPins();
-  map.off("zoomend"); map.on("zoomend", drawPins);
+  // 前の描き直しだけを外す（map.off("zoomend") だと地図の部品の分まで外れて、線がずれる）
+  if (pinHandler) map.off("zoomend", pinHandler);
+  pinHandler = drawPins; map.on("zoomend", pinHandler);
   if (same) tag(ll[0], "start goal", "出発・到着", 84);
   else {
     tag(ll[0], "start", "出発", 48);
