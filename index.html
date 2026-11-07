@@ -521,7 +521,8 @@ $("go").onclick = async () => {
       if (m >= 0){ s.wmin = s.wmax = s.work = Math.ceil(m / 10) * 10; } // 手で入れた時間も10分単位に繰り上げ
       else { s.wmin = wmin; s.wmax = wmax; s.work = (wmin + wmax) / 2; }
     });
-    const order = solve(dur, list, end, first);
+    // 順番は繰り上げる前の時間で決める（繰り上げた時間で決めると、1分で行ける近い現場どうしも10分に見えて、続けて回らなくなる）
+    const order = solve(raw, list, end, first);
     cur = {start: here ? start : p0.full, dest: destFull, order, best: order.slice(), list, dur, dist, pts, end, first};
     render(true);
   } catch(e){
